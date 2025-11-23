@@ -1,0 +1,81 @@
+
+-- CREAR BASE DE DATOS
+
+CREATE DATABASE dbClinica;
+GO
+USE dbClinica;
+GO
+
+
+
+-- TABLAS
+
+-- TABLA: Paciente
+CREATE TABLE Paciente (
+    ID_paciente INT PRIMARY KEY,
+    Nom_pac VARCHAR(50) NOT NULL,
+    Ape_pac VARCHAR(50) NOT NULL,
+    Direc_pac VARCHAR(80),
+    Telf_pac CHAR(9),
+    Email_pac VARCHAR(50)
+);
+GO
+
+-- TABLA: CentroSalud
+CREATE TABLE CentroSalud (
+    ID_Centro VARCHAR(15) PRIMARY KEY,
+    Nom_Cent VARCHAR(50) NOT NULL,
+    Direc_Cent VARCHAR(80),
+    Telf_Cent CHAR(9)
+);
+GO
+
+-- TABLA: Medico
+CREATE TABLE Medico (
+    ID_Medico INT PRIMARY KEY,
+    Nom_Med VARCHAR(50),
+    Ape_Med VARCHAR(50),
+    Especialidad VARCHAR(50),
+    ID_Centro VARCHAR(15) NOT NULL,
+    FOREIGN KEY (ID_Centro) REFERENCES CentroSalud(ID_Centro)
+);
+GO
+
+-- TABLA: Citas
+CREATE TABLE Citas (
+    ID_Citas VARCHAR(20) PRIMARY KEY,
+    Fecha_Cit DATE NOT NULL,
+    HorIni_Cit TIME NOT NULL,
+    HorFin_Cit TIME NOT NULL,
+    Estad_Cit VARCHAR(20),
+    Tipo_Cit VARCHAR(20),
+    Motivo_Cit VARCHAR(100),
+    ID_Medico INT NOT NULL,
+    ID_paciente INT NOT NULL,
+    ID_Centro VARCHAR(15) NOT NULL,
+    FOREIGN KEY (ID_Medico) REFERENCES Medico(ID_Medico),
+    FOREIGN KEY (ID_paciente) REFERENCES Paciente(ID_paciente),
+    FOREIGN KEY (ID_Centro) REFERENCES CentroSalud(ID_Centro)
+);
+GO
+
+-- TABLA: HistorialClinico
+CREATE TABLE HistorialClinico (
+    ID_Historial VARCHAR(20) PRIMARY KEY,
+    FechRgstr_Hist DATE,
+    Diagnostico VARCHAR(250),
+    Tratamiento VARCHAR(250),
+    Observaciones VARCHAR(250),
+    ID_Citas VARCHAR(20) NOT NULL,
+    FOREIGN KEY (ID_Citas) REFERENCES Citas(ID_Citas)
+);
+GO
+
+-- TABLA: LogAcceso
+CREATE TABLE LogAcceso (
+    ID_Log VARCHAR(20) PRIMARY KEY,
+    FechHora_Log DATETIME,
+    Accion_Log VARCHAR(100),
+    ID_User VARCHAR(20)
+);
+GO
