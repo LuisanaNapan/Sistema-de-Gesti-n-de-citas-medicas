@@ -1,0 +1,258 @@
+
+-- CREAR BASE DE DATOS
+
+CREATE DATABASE dbClinica;
+GO
+USE dbClinica;
+GO
+
+
+
+-- TABLAS
+
+-- TABLA: Paciente
+CREATE TABLE Paciente (
+    ID_paciente INT PRIMARY KEY,
+    Nom_pac VARCHAR(50) NOT NULL,
+    Ape_pac VARCHAR(50) NOT NULL,
+    Direc_pac VARCHAR(80),
+    Telf_pac CHAR(9),
+    Email_pac VARCHAR(50)
+);
+GO
+
+-- TABLA: CentroSalud
+CREATE TABLE CentroSalud (
+    ID_Centro VARCHAR(15) PRIMARY KEY,
+    Nom_Cent VARCHAR(50) NOT NULL,
+    Direc_Cent VARCHAR(80),
+    Telf_Cent CHAR(9)
+);
+GO
+
+-- TABLA: Medico
+CREATE TABLE Medico (
+    ID_Medico INT PRIMARY KEY,
+    Nom_Med VARCHAR(50),
+    Ape_Med VARCHAR(50),
+    Especialidad VARCHAR(50),
+    ID_Centro VARCHAR(15) NOT NULL,
+    FOREIGN KEY (ID_Centro) REFERENCES CentroSalud(ID_Centro)
+);
+GO
+
+-- TABLA: Citas
+CREATE TABLE Citas (
+    ID_Citas VARCHAR(20) PRIMARY KEY,
+    Fecha_Cit DATE NOT NULL,
+    HorIni_Cit TIME NOT NULL,
+    HorFin_Cit TIME NOT NULL,
+    Estad_Cit VARCHAR(20),
+    Tipo_Cit VARCHAR(20),
+    Motivo_Cit VARCHAR(100),
+    ID_Medico INT NOT NULL,
+    ID_paciente INT NOT NULL,
+    ID_Centro VARCHAR(15) NOT NULL,
+    FOREIGN KEY (ID_Medico) REFERENCES Medico(ID_Medico),
+    FOREIGN KEY (ID_paciente) REFERENCES Paciente(ID_paciente),
+    FOREIGN KEY (ID_Centro) REFERENCES CentroSalud(ID_Centro)
+);
+GO
+
+-- TABLA: HistorialClinico
+CREATE TABLE HistorialClinico (
+    ID_Historial VARCHAR(20) PRIMARY KEY,
+    FechRgstr_Hist DATE,
+    Diagnostico VARCHAR(250),
+    Tratamiento VARCHAR(250),
+    Observaciones VARCHAR(250),
+    ID_Citas VARCHAR(20) NOT NULL,
+    FOREIGN KEY (ID_Citas) REFERENCES Citas(ID_Citas)
+);
+GO
+
+-- TABLA: LogAcceso
+CREATE TABLE LogAcceso (
+    ID_Log VARCHAR(20) PRIMARY KEY,
+    FechHora_Log DATETIME,
+    Accion_Log VARCHAR(100),
+    ID_User VARCHAR(20)
+);
+GO
+
+
+
+-- PROCEDIMIENTOS ALMACENADOS
+
+-- PROCEDURE: Registrar Cita
+CREATE PROCEDURE RegistrarCita
+    @ID_paciente INT,
+    @ID_Medico INT,
+    @ID_Centro VARCHAR(15),
+    @Fecha DATE,
+    @HoraInicio TIME,
+    @HoraFin TIME
+AS
+BEGIN
+    INSERT INTO Citas (
+        ID_Citas, Fecha_Cit, HorIni_Cit, HorFin_Cit, Estad_Cit,
+        Tipo_Cit, Motivo_Cit, ID_Medico, ID_paciente, ID_Centro
+    )
+    VALUES (
+        CONCAT('CIT', FORMAT(GETDATE(),'yyyyMMddHHmmss')),
+        @Fecha, @HoraInicio, @HoraFin,
+        'Programada', 'Consulta', '---',
+        @ID_Medico, @ID_paciente, @ID_Centro
+    );
+END;
+GO
+
+-- PROCEDURE: Actualizar Estado de Cita
+CREATE PROCEDURE ActualizarEstadoCita
+    @ID_Citas VARCHAR(20),
+    @NuevoEstado VARCHAR(20)
+AS
+BEGIN
+    UPDATE Citas
+    SET Estad_Cit = @NuevoEstado
+    WHERE ID_Citas = @ID_Citas;
+END;
+GO
+
+-- PROCEDURE: Registrar Historial
+CREATE PROCEDURE RegistrarHistorial
+    @ID_Citas VARCHAR(20),
+    @Diagnostico VARCHAR(250),
+    @Tratamiento VARCHAR(250)
+AS
+BEGIN
+    INSERT INTO HistorialClinico (
+        ID_Historial, FechRgstr_Hist, Diagnostico,
+        Tratamiento, Observaciones, ID_Citas
+    )
+    VALUES (
+        CONCAT('HIS', FORMAT(GETDATE(),'yyyyMMddHHmmss')),
+        GETDATE(), @Diagnostico, @Tratamiento, '---', @ID_Citas
+    );
+END;
+GO
+
+-- VISTAS
+-- VISTA: Citas Programadas
+CREATE VIEW Vista_CitasProgramadas AS
+SELECT C.ID_Citas, C.Fecha_Cit, C.HorIni_Cit, C.HorFin_Cit, C.Estad_Cit,
+       P.Nom_pac + ' ' + P.Ape_pac AS Paciente,
+       M.Nom_Med + ' ' + M.Ape_Med AS Medico,
+       CS.Nom_Cent AS Centro
+FROM Citas C
+JOIN Paciente P ON C.ID_paciente = P.ID_paciente
+JOIN Medico M ON C.ID_Medico = M.ID_Medico
+JOIN CentroSalud CS ON C.ID_Centro = CS.ID_Centro
+WHERE C.Estad_Cit = 'Programada';
+GO
+
+-- VISTA: Historial por Paciente
+CREATE VIEW Vista_HistorialPaciente AS
+SELECT H.ID_Historial, H.FechRgstr_Hist, H.Diagnostico,
+       H.Tratamiento,
+       P.Nom_pac + ' ' + P.Ape_pac AS Paciente,
+       M.Nom_Med + ' ' + M.Ape_Med AS Medico
+FROM HistorialClinico H
+JOIN Citas C ON H.ID_Citas = C.ID_Citas
+JOIN Paciente P ON C.ID_paciente = P.ID_paciente
+JOIN Medico M ON C.ID_Medico = M.ID_Medico;
+GO
+
+
+
+-- TRIGGERS
+
+
+-- TRIGGER: Auditoría de Creación de Citas
+CREATE TRIGGER tr_AuditoriaCitas
+ON Citas
+AFTER INSERT
+AS
+BEGIN
+    INSERT INTO LogAcceso (ID_Log, FechHora_Log, Accion_Log, ID_User)
+    SELECT CONCAT('LOG', FORMAT(GETDATE(),'yyyyMMddHHmmss')),
+           GETDATE(), 'Creacion de cita', 'SYSTEM'
+    FROM inserted;
+END;
+GO
+
+-- TRIGGER: Evitar Cruce de Horarios
+CREATE TRIGGER tr_EvitarCruceCitas
+ON Citas
+INSTEAD OF INSERT
+AS
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM Citas C
+        JOIN inserted I
+          ON C.ID_Medico = I.ID_Medico
+         AND C.ID_Centro = I.ID_Centro
+         AND C.Fecha_Cit = I.Fecha_Cit
+         AND (C.HorIni_Cit < I.HorFin_Cit AND C.HorFin_Cit > I.HorIni_Cit)
+    )
+    BEGIN
+        RAISERROR('El medico ya tiene una cita en ese horario.', 16, 1);
+        RETURN;
+    END
+
+    INSERT INTO Citas
+    SELECT * FROM inserted;
+END;
+GO
+
+
+-------------------------------------------------------
+-- INSERTS DE DATOS
+-------------------------------------------------------
+
+-- PACIENTES
+INSERT INTO Paciente VALUES
+(1, 'Carlos', 'Ramirez', 'Av. Lima 123', '987654321', 'carlos@gmail.com'),
+(2, 'Andrea', 'Torres', 'Jr. Arequipa 456', '912345678', 'andrea@gmail.com'),
+(3, 'Luis', 'Gomez', 'Av. Grau 890', '945612378', 'luis@gmail.com'),
+(4, 'María', 'Vargas', 'Calle Sol 321', '998877665', 'maria@gmail.com'),
+(5, 'Jose', 'Pérez', 'Av. Perú 556', '987112233', 'jose@gmail.com');
+
+-- CENTROS DE SALUD
+INSERT INTO CentroSalud VALUES
+('CS001', 'Centro Salud Lima', 'Av. Brasil 123', '014567890'),
+('CS002', 'Clinica San Juan', 'Av. Javier Prado 789', '014556677'),
+('CS003', 'Hospital Nacional', 'Av. Colonial 2456', '014589632');
+
+-- MEDICOS
+INSERT INTO Medico VALUES
+(101, 'Juan', 'Santos', 'Pediatría', 'CS001'),
+(102, 'Gabriela', 'Paredes', 'Cardiología', 'CS002'),
+(103, 'Miguel', 'Lopez', 'Medicina General', 'CS001'),
+(104, 'Facundo', 'Huaman', 'Dermatología', 'CS003'),
+(105, 'Pablo', 'Reyes', 'Neurología', 'CS002');
+
+-- CITAS
+INSERT INTO Citas VALUES
+('CIT202501010800', '2025-01-01', '08:00', '08:30', 'Programada', 'Consulta', 'Dolor de cabeza', 101, 1, 'CS001'),
+('CIT202501011000', '2025-01-01', '10:00', '10:30', 'Programada', 'Control', 'Revisión general', 102, 2, 'CS002'),
+('CIT202501011100', '2025-01-01', '11:00', '11:30', 'Programada', 'Consulta', 'Alergia', 104, 3, 'CS003'),
+('CIT202501021200', '2025-01-02', '12:00', '12:30', 'Programada', 'Consulta', 'Tos fuerte', 103, 4, 'CS001'),
+('CIT202501021400', '2025-01-02', '14:00', '14:30', 'Programada', 'Control', 'Chequeo mensual', 105, 5, 'CS002');
+
+-- HISTORIAL CLINICO
+INSERT INTO HistorialClinico VALUES
+('HIS2025010101', '2025-01-01', 'Migraña', 'Paracetamol 500mg', 'Paciente estable', 'CIT202501010800'),
+('HIS2025010102', '2025-01-01', 'Presión alta', 'Reposo + dieta', 'Requiere control', 'CIT202501011000'),
+('HIS2025010103', '2025-01-01', 'Alergia en piel', 'Crema antihistamínica', 'Sin complicaciones', 'CIT202501011100'),
+('HIS2025010201', '2025-01-02', 'Bronquitis', 'Jarabe expectorante', 'Mejorando', 'CIT202501021200'),
+('HIS2025010202', '2025-01-02', 'Estrés', 'Relajantes naturales', 'Control mensual', 'CIT202501021400');
+
+-- LOG
+INSERT INTO LogAcceso VALUES
+('LOG2025010101', '2025-01-01 08:00', 'Inicio de sesión', 'user001'),
+('LOG2025010102', '2025-01-01 10:00', 'Registro de historial', 'med102'),
+('LOG2025010103', '2025-01-01 11:00', 'Modificación de cita', 'admin01');
+
+
